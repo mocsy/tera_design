@@ -13,3 +13,6 @@ This allows using tera to enhance static html design efforts and makes it easy t
 
 # Example
 It includes a copy of (SB Admin 2)(https://github.com/BlackrockDigital/startbootstrap-sb-admin-2) modified to showcase some tera template fetures without the need for completeness.
+
+## License
+Code released under the MIT license.
