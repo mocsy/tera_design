@@ -10,3 +10,6 @@ When you open a page in the browser you can ommit the .html extension.
 If a template requires variables as input, then those can be put into a .ctx file of the same name in JSON format.
 In case a required value is not present in the corresponding .ctx file, it shows an error in the browser.
 This allows using tera to enhance static html design efforts and makes it easy to integrate the result to tera based rust projects.
+
+# Example
+It includes a copy of (SB Admin 2)(https://github.com/BlackrockDigital/startbootstrap-sb-admin-2) modified to showcase some tera template fetures without the need for completeness.
