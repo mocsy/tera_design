@@ -59,7 +59,7 @@ fn main() -> std::io::Result<()> {
     env_logger::init();
 
     HttpServer::new(|| {
-        let tera = compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
+        let tera = compile_templates!("./templates/**/*");
 
         App::new()
             .data(std::sync::Mutex::new(tera))
