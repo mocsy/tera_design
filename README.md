@@ -16,3 +16,7 @@ It includes a copy of [SB Admin 2](https://github.com/BlackrockDigital/startboot
 
 ## License
 Code released under the MIT license.
+
+## Build
+cargo install cross
+cross build --release --target x86_64-pc-windows-gnu
