@@ -61,7 +61,7 @@ fn main() -> std::io::Result<()> {
     env_logger::init();
 
     HttpServer::new(|| {
-        let tera = compile_templates!("./templates/**/*");
+        let tera = compile_templates!("templates/**/*");
 
         App::new()
             .data(std::sync::Mutex::new(tera))
@@ -79,7 +79,7 @@ fn main() -> std::io::Result<()> {
 }
 
 fn get_context(file: &str) -> Result<serde_json::Value, Error> {
-    let mut fl = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/").to_owned();
+    let mut fl = "templates/".to_owned();
     fl.push_str(file);
     let ctx_file = if let Some(file_ext) = std::path::Path::new(&fl)
         .extension()
