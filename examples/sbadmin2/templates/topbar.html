@@ -96,6 +96,12 @@
             </div>
         </li>
 
+        {% for product in products %}
+        <li class="nav-item">
+            <a class="nav-link" href="#">{{loop.index}}. {{product}}</a>
+        </li>
+        {% endfor %}
+
         <!-- Nav Item - Messages -->
         <li class="nav-item dropdown no-arrow mx-1">
             <a class="nav-link dropdown-toggle" href="#" id="messagesDropdown" role="button" data-toggle="dropdown"

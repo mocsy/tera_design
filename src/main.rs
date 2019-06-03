@@ -5,12 +5,9 @@ extern crate tera;
 #[macro_use]
 extern crate log;
 
-use std::collections::HashMap;
-
 use actix_files as fs;
-use actix_web::http::StatusCode;
 use actix_web::{
-    error, get, guard, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse,
+    error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse,
     HttpServer,
 };
 
@@ -40,13 +37,18 @@ fn templates(
                 fl
             }
         };
-        let ctx = get_context(&file).unwrap();
-        tmpl.render(&file, &ctx).map_err(|e| {
-            error::ErrorInternalServerError(format!(
-                "Template error: {} with context: {:?}",
-                e, &ctx
-            ))
-        })?
+        match get_context(&file) {
+            Ok(ctx) => tmpl.render(&file, &ctx).map_err(|e| {
+                error::ErrorInternalServerError(format!(
+                    "Template error: {} with context: {:?}",
+                    e, &ctx
+                ))
+            })?,
+            Err(e) => {
+                error!("{}",e);
+                format!("Couldn't read context json: {}", e)
+            }
+        }
     } else {
         tmpl.render("404.html", &tera::Context::new())
             .map_err(|_| error::ErrorInternalServerError("Template error"))?
@@ -69,32 +71,33 @@ fn main() -> std::io::Result<()> {
             .service(fs::Files::new("/js", "js").show_files_listing())
             .service(fs::Files::new("/vendor", "vendor").show_files_listing())
             .service(fs::Files::new("/img", "img").show_files_listing())
+            .service(fs::Files::new("/fonts", "fonts").show_files_listing())
             .service(web::resource("{any:.*}").route(web::get().to(templates)))
     })
     .bind("127.0.0.1:8080")?
     .run()
 }
 
-fn get_context(file: &str) -> Result<HashMap<String, String>, Error> {
+fn get_context(file: &str) -> Result<serde_json::Value, Error> {
     let mut fl = concat!(env!("CARGO_MANIFEST_DIR"), "/templates/").to_owned();
     fl.push_str(file);
     let ctx_file = if let Some(file_ext) = std::path::Path::new(&fl)
         .extension()
         .and_then(std::ffi::OsStr::to_str)
     {
-        fl.replace(file_ext, "ctx")
+        fl.replace(file_ext, "json")
     } else {
         let mut s = fl.to_owned();
-        s.push_str(".ctx");
+        s.push_str(".json");
         s
     };
     if std::path::Path::new(&ctx_file).exists() {
         let file = std::fs::File::open(ctx_file)?;
         let reader = std::io::BufReader::new(file);
-        let json: HashMap<String, String> = serde_json::from_reader(reader)?;
+        let json: serde_json::Value = serde_json::from_reader(reader)?;
         return Ok(json);
     }
-    Ok(HashMap::new())
+    Ok(serde_json::Value::Null)
 }
 
 /// favicon handler
