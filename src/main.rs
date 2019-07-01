@@ -7,15 +7,14 @@ extern crate log;
 
 use actix_files as fs;
 use actix_web::{
-    error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse,
-    HttpServer,
+    error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
 
 // store tera template in application state
 // #[get("{any:.*}")]
 fn templates(
     req: HttpRequest,
-    tmpl: web::Data<std::sync::Mutex<tera::Tera>>
+    tmpl: web::Data<std::sync::Mutex<tera::Tera>>,
 ) -> Result<HttpResponse, Error> {
     let mut tmpl = tmpl.lock().unwrap();
     if let Err(e) = tmpl.full_reload() {
@@ -45,21 +44,26 @@ fn templates(
                 ))
             })?,
             Err(e) => {
-                error!("{}",e);
+                error!("{}", e);
                 format!("Couldn't read context json: {}", e)
             }
         }
     } else {
         tmpl.render("404.html", &tera::Context::new())
-            .map_err(|_| error::ErrorInternalServerError("Template error"))?
+            .map_err(|e| error::ErrorInternalServerError(format!("Template error: {}", e)))?
     };
     Ok(HttpResponse::Ok().content_type("text/html").body(s))
 }
 
 fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "actix_web=info");
+    std::env::set_var("RUST_LOG", "actix_web=info,tera_design=info");
     env_logger::init();
 
+    let version = env!("CARGO_PKG_VERSION");
+    info!(
+        "Tera design {} dev server listening on http://127.0.0.1:8080",
+        version
+    );
     HttpServer::new(|| {
         let tera = compile_templates!("templates/**/*");
 
@@ -97,7 +101,7 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
         let json: serde_json::Value = serde_json::from_reader(reader)?;
         return Ok(json);
     }
-    Ok(serde_json::Value::Null)
+    Ok(serde_json::from_str("{}").unwrap())
 }
 
 /// favicon handler

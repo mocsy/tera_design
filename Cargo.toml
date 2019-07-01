@@ -5,10 +5,10 @@ authors = ["Andras Mocsary <nobody@reedwolf.com>"]
 edition = "2018"
 
 [dependencies]
-env_logger = "0.6"
+env_logger = "0.6.2"
 tera = "0.11.20"
-actix-web = "1.0.0-rc"
+actix-web = "1.0.3"
 log = "0.4.6"
-serde = "1.0"
-serde_json = "1.0.39"
-actix-files = "0.1.0"
+serde = "1.0.94"
+serde_json = "1.0.40"
+actix-files = "0.1.3"
