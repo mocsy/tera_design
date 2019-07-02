@@ -4,8 +4,12 @@
 extern crate tera;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 use actix_files as fs;
+use actix_identity::Identity;
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{
     error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
@@ -15,7 +19,15 @@ use actix_web::{
 fn templates(
     req: HttpRequest,
     tmpl: web::Data<std::sync::Mutex<tera::Tera>>,
+    id: Identity,
+    state: web::Data<std::sync::Mutex<MyAppState>>,
 ) -> Result<HttpResponse, Error> {
+    let state = state.lock().unwrap();
+    if !state.secret.is_empty() {
+        if id.identity().is_none() {
+            return Ok(HttpResponse::Found().header("location", "/login").finish());
+        }
+    }
     let mut tmpl = tmpl.lock().unwrap();
     if let Err(e) = tmpl.full_reload() {
         println!("Error during template reload: {:?}", e);
@@ -55,6 +67,12 @@ fn templates(
     Ok(HttpResponse::Ok().content_type("text/html").body(s))
 }
 
+#[derive(Deserialize, Default)]
+struct MyAppState {
+    // note: it's just an invite code, not a password
+    secret: String,
+}
+
 fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=info,tera_design=info");
     env_logger::init();
@@ -67,9 +85,37 @@ fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         let tera = compile_templates!("templates/**/*");
 
+        let state = if std::path::Path::new("lockdown.json").exists() {
+            if let Ok(file) = std::fs::File::open("lockdown.json") {
+                let reader = std::io::BufReader::new(file);
+                let json: MyAppState = serde_json::from_reader(reader).unwrap_or_default();
+                json
+            } else {
+                MyAppState {
+                    secret: String::new(),
+                }
+            }
+        } else {
+            MyAppState {
+                secret: String::new(),
+            }
+        };
+
         App::new()
             .data(std::sync::Mutex::new(tera))
+            .data(std::sync::Mutex::new(state))
+            .wrap(IdentityService::new(
+                CookieIdentityPolicy::new(&[0; 32])
+                    .name("auth")
+                    .secure(false),
+            ))
             .wrap(middleware::Logger::default()) // enable logger
+            .service(
+                web::resource("/login")
+                    .route(web::post().to(login_save))
+                    .route(web::get().to(login)),
+            )
+            .service(web::resource("/logout").to(logout))
             .service(favicon)
             .service(fs::Files::new("/css", "css").show_files_listing())
             .service(fs::Files::new("/js", "js").show_files_listing())
@@ -108,4 +154,44 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
 #[get("/favicon")]
 fn favicon() -> Result<fs::NamedFile, Error> {
     Ok(fs::NamedFile::open("static/favicon.ico")?)
+}
+
+#[derive(Deserialize)]
+struct Invite {
+    secret: String,
+}
+
+fn login_save(
+    id: Identity,
+    invinf: web::Form<Invite>,
+    state: web::Data<std::sync::Mutex<MyAppState>>,
+) -> HttpResponse {
+    let state = state.lock().unwrap();
+    println!("{:?} {:?}", invinf.secret, state.secret);
+    if invinf.secret.eq(&state.secret) {
+        id.remember("visitor".to_owned());
+    }
+    HttpResponse::Found().header("location", "/").finish()
+}
+
+fn logout(id: Identity) -> HttpResponse {
+    id.forget();
+    HttpResponse::Found().header("location", "/login").finish()
+}
+
+fn login() -> HttpResponse {
+    let html = r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>This site is invite only</title>
+</head>
+<body>
+    <form method="post">
+      <input type="text" name="secret" /><br/>
+      <p><input type="submit" value="Submit Invite code"></p>
+    </form>
+</body>
+</html>"#;
+    HttpResponse::Ok().content_type("text/html").body(html)
 }
