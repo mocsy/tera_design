@@ -141,7 +141,18 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
         s.push_str(".json");
         s
     };
-    let mut final_ctx = if std::path::Path::new(&ctx_file).exists() {
+    let mod_file = std::path::Path::new(&fl).parent().unwrap().join("mod.json");
+    let mut final_ctx = if std::path::Path::new(&mod_file).exists() {
+        let file = std::fs::File::open(mod_file)?;
+        let reader = std::io::BufReader::new(file);
+        let json: serde_json::Value = serde_json::from_reader(reader)?;
+        json
+    } else {
+        let json: serde_json::Value = serde_json::from_str("{}")?;
+        json
+    };
+
+    let local_ctx = if std::path::Path::new(&ctx_file).exists() {
         let file = std::fs::File::open(ctx_file)?;
         let reader = std::io::BufReader::new(file);
         let json: serde_json::Value = serde_json::from_reader(reader)?;
@@ -151,17 +162,7 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
         json
     };
 
-    let mod_file = std::path::Path::new(&fl).parent().unwrap().join("mod.json");
-    let global_ctx = if std::path::Path::new(&mod_file).exists() {
-        let file = std::fs::File::open(mod_file)?;
-        let reader = std::io::BufReader::new(file);
-        let json: serde_json::Value = serde_json::from_reader(reader)?;
-        json
-    } else {
-        let json: serde_json::Value = serde_json::from_str("{}")?;
-        json
-    };
-    json_patch::merge(&mut final_ctx, &global_ctx);
+    json_patch::merge(&mut final_ctx, &local_ctx);
     // Ok(serde_json::from_str("{}").unwrap())
     Ok(final_ctx)
 }
