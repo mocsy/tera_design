@@ -25,7 +25,7 @@ fn templates(
     let state = state.lock().unwrap();
     if !state.secret.is_empty() {
         if id.identity().is_none() {
-            return Ok(HttpResponse::Found().header("location", "/login").finish());
+            return Ok(HttpResponse::Found().header("location", "/unlock").finish());
         }
     }
     let mut tmpl = tmpl.lock().unwrap();
@@ -111,11 +111,11 @@ fn main() -> std::io::Result<()> {
             ))
             .wrap(middleware::Logger::default()) // enable logger
             .service(
-                web::resource("/login")
+                web::resource("/unlock")
                     .route(web::post().to(login_save))
                     .route(web::get().to(login)),
             )
-            .service(web::resource("/logout").to(logout))
+            .service(web::resource("/lock").to(logout))
             .service(favicon)
             .service(fs::Files::new("/css", "css").show_files_listing())
             .service(fs::Files::new("/js", "js").show_files_listing())
@@ -141,13 +141,29 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
         s.push_str(".json");
         s
     };
-    if std::path::Path::new(&ctx_file).exists() {
+    let mut final_ctx = if std::path::Path::new(&ctx_file).exists() {
         let file = std::fs::File::open(ctx_file)?;
         let reader = std::io::BufReader::new(file);
         let json: serde_json::Value = serde_json::from_reader(reader)?;
-        return Ok(json);
-    }
-    Ok(serde_json::from_str("{}").unwrap())
+        json
+    } else {
+        let json: serde_json::Value = serde_json::from_str("{}")?;
+        json
+    };
+
+    let mod_file = std::path::Path::new(&fl).parent().unwrap().join("mod.json");
+    let global_ctx = if std::path::Path::new(&mod_file).exists() {
+        let file = std::fs::File::open(mod_file)?;
+        let reader = std::io::BufReader::new(file);
+        let json: serde_json::Value = serde_json::from_reader(reader)?;
+        json
+    } else {
+        let json: serde_json::Value = serde_json::from_str("{}")?;
+        json
+    };
+    json_patch::merge(&mut final_ctx, &global_ctx);
+    // Ok(serde_json::from_str("{}").unwrap())
+    Ok(final_ctx)
 }
 
 /// favicon handler
@@ -176,7 +192,7 @@ fn login_save(
 
 fn logout(id: Identity) -> HttpResponse {
     id.forget();
-    HttpResponse::Found().header("location", "/login").finish()
+    HttpResponse::Found().header("location", "/unlock").finish()
 }
 
 fn login() -> HttpResponse {
