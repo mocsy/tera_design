@@ -4,8 +4,8 @@
 extern crate tera;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate serde_derive;
+mod config;
+mod lock;
 
 use actix_files as fs;
 use actix_identity::Identity;
@@ -13,6 +13,7 @@ use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{
     error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
+use serde::Deserialize;
 
 // store tera template in application state
 // #[get("{any:.*}")]
@@ -68,7 +69,7 @@ fn templates(
 }
 
 #[derive(Deserialize, Default)]
-struct MyAppState {
+pub(crate) struct MyAppState {
     // note: it's just an invite code, not a password
     secret: String,
 }
@@ -112,16 +113,12 @@ fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default()) // enable logger
             .service(
                 web::resource("/unlock")
-                    .route(web::post().to(login_save))
-                    .route(web::get().to(login)),
+                    .route(web::post().to(lock::login_save))
+                    .route(web::get().to(lock::login)),
             )
-            .service(web::resource("/lock").to(logout))
+            .service(web::resource("/lock").to(lock::logout))
             .service(favicon)
-            .service(fs::Files::new("/css", "css").show_files_listing())
-            .service(fs::Files::new("/js", "js").show_files_listing())
-            .service(fs::Files::new("/vendor", "vendor").show_files_listing())
-            .service(fs::Files::new("/img", "img").show_files_listing())
-            .service(fs::Files::new("/fonts", "fonts").show_files_listing())
+            .configure(config::config_statics)
             .service(web::resource("{any:.*}").route(web::get().to(templates)))
     })
     .bind("127.0.0.1:8080")?
@@ -171,44 +168,4 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
 #[get("/favicon")]
 fn favicon() -> Result<fs::NamedFile, Error> {
     Ok(fs::NamedFile::open("static/favicon.ico")?)
-}
-
-#[derive(Deserialize)]
-struct Invite {
-    secret: String,
-}
-
-fn login_save(
-    id: Identity,
-    invinf: web::Form<Invite>,
-    state: web::Data<std::sync::Mutex<MyAppState>>,
-) -> HttpResponse {
-    let state = state.lock().unwrap();
-    println!("{:?} {:?}", invinf.secret, state.secret);
-    if invinf.secret.eq(&state.secret) {
-        id.remember("visitor".to_owned());
-    }
-    HttpResponse::Found().header("location", "/").finish()
-}
-
-fn logout(id: Identity) -> HttpResponse {
-    id.forget();
-    HttpResponse::Found().header("location", "/unlock").finish()
-}
-
-fn login() -> HttpResponse {
-    let html = r#"<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>This site is invite only</title>
-</head>
-<body>
-    <form method="post">
-      <input type="text" name="secret" /><br/>
-      <p><input type="submit" value="Submit Invite code"></p>
-    </form>
-</body>
-</html>"#;
-    HttpResponse::Ok().content_type("text/html").body(html)
 }

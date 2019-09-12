@@ -3,7 +3,6 @@
 Tera design was envisioned with frontend developers in mind.
 It is a dev web server focusing on rapid frontend protoyping using the [tera](https://crates.io/crates/tera) templates engine.
 Writen in rust using [actix-web](https://crates.io/crates/actix-web/1.0.5), it is so fast you never gonna notice any delays.
-In fact an artifical delay feature is being considered.
 
 # How it works
 Tera design looks for .html files in the templates directory.
@@ -18,6 +17,23 @@ The resulting prototype uses these urls and handled and feels like the final app
 When parts of the variables apply to every page in a given directory, these can be put into a single mod.json file instead of copy pasting the same values to every context.
 
 The above features enable tera_design to enhance static html design efforts. It easy to integrate the result to jinja2 based projects, like rust tera/askama, python django, etc.
+
+## loading static files form directory
+Ne in 0.1.5, static directories can be configured in config.ron:
+```
+(
+    static_dirs: [
+        "css",
+        "js",
+        "vendor",
+        "img",
+        "fonts",
+        "static",
+    ]
+)
+```
+
+# Note: this is dev server, not stable enough to be used in production
 
 # Example
 It includes a copy of [SB Admin 2](https://github.com/BlackrockDigital/startbootstrap-sb-admin-2) modified to showcase some tera template fetures without the need for completeness.
