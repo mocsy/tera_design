@@ -14,8 +14,10 @@ fn load_config() -> Config {
     match from_reader(&conf_file) {
         Ok(x) => x,
         Err(e) => {
-            println!("Failed to load config: {}", e);
-            std::process::exit(1);
+            println!("Failed to load config: {}, defaulting...", e);
+            Config {
+                static_dirs: vec!["static".to_owned()]
+            }
         }
     }
 }
