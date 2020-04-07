@@ -2,8 +2,6 @@
 
 #[macro_use]
 extern crate tera;
-#[macro_use]
-extern crate log;
 mod config;
 mod lock;
 
@@ -13,6 +11,7 @@ use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{
     error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
+use log::{debug, error, info};
 use serde::Deserialize;
 
 // store tera template in application state
@@ -22,34 +21,32 @@ fn templates(
     tmpl: web::Data<std::sync::Mutex<tera::Tera>>,
     id: Identity,
     state: web::Data<std::sync::Mutex<MyAppState>>,
+    cfg: web::Data<config::Config>,
 ) -> Result<HttpResponse, Error> {
     let state = state.lock().unwrap();
-    if !state.secret.is_empty() {
-        if id.identity().is_none() {
-            return Ok(HttpResponse::Found().header("location", "/unlock").finish());
-        }
+    if !state.secret.is_empty() && id.identity().is_none() {
+        return Ok(HttpResponse::Found().header("location", "/unlock").finish());
     }
     let mut tmpl = tmpl.lock().unwrap();
     if let Err(e) = tmpl.full_reload() {
-        println!("Error during template reload: {:?}", e);
+        debug!("Error during template reload: {:?}", e);
     }
     let s = if let Ok(pth) = web::Path::<String>::extract(&req) {
-        println!("fn templates: {}", &pth);
+        debug!("fn templates: {}", &pth);
         let file = if pth.is_empty() {
             "index.html".to_owned()
+        } else if std::path::Path::new(&pth.to_owned())
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some()
+        {
+            pth.to_owned()
         } else {
-            if let Some(_) = std::path::Path::new(&pth.to_owned())
-                .extension()
-                .and_then(std::ffi::OsStr::to_str)
-            {
-                pth.to_owned()
-            } else {
-                let mut fl = pth.to_owned();
-                fl.push_str(".html");
-                fl
-            }
+            let mut fl = pth.to_owned();
+            fl.push_str(".html");
+            fl
         };
-        match get_context(&file) {
+        match get_context(&file, &cfg) {
             Ok(ctx) => tmpl.render(&file, &ctx).map_err(|e| {
                 error::ErrorInternalServerError(format!(
                     "Template error: {} with context: {:?}",
@@ -75,15 +72,18 @@ pub(crate) struct MyAppState {
 }
 
 fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "actix_web=info,tera_design=info");
+    std::env::set_var("RUST_LOG", "actix_web=info,tera_design=debug");
     env_logger::init();
 
     let version = env!("CARGO_PKG_VERSION");
+    let cfg = config::load_config();
+    let port = cfg.bind_port;
     info!(
-        "Tera design {} dev server listening on http://127.0.0.1:8080",
-        version
+        "Tera design {} dev server listening on http://127.0.0.1:{}",
+        version, port
     );
-    HttpServer::new(|| {
+    HttpServer::new(move || {
+        // let template_dir = cfg.template_dir.clone();
         let tera = compile_templates!("templates/**/*");
 
         let state = if std::path::Path::new("lockdown.json").exists() {
@@ -105,6 +105,7 @@ fn main() -> std::io::Result<()> {
         App::new()
             .data(std::sync::Mutex::new(tera))
             .data(std::sync::Mutex::new(state))
+            .data(cfg.clone())
             .wrap(IdentityService::new(
                 CookieIdentityPolicy::new(&[0; 32])
                     .name("auth")
@@ -121,17 +122,18 @@ fn main() -> std::io::Result<()> {
             .configure(config::config_statics)
             .service(web::resource("{any:.*}").route(web::get().to(templates)))
     })
-    .bind("127.0.0.1:8080")?
+    .bind(format!("127.0.0.1:{}", port))?
     .run()
 }
 
-fn get_context(file: &str) -> Result<serde_json::Value, Error> {
-    let mut fl = "templates/".to_owned();
-    fl.push_str(file);
-    let ctx_file = if let Some(file_ext) = std::path::Path::new(&fl)
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-    {
+fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, Error> {
+    // let template_dir = cfg.template_dir.clone();
+    let template_dir = "templates/".to_owned();
+    let tdir = std::path::Path::new(&template_dir);
+    let file_path = tdir.join(file);
+    let fl = file_path.to_str().unwrap().to_owned();
+    debug!("template file: {}", &fl);
+    let ctx_file = if let Some(file_ext) = file_path.extension().and_then(std::ffi::OsStr::to_str) {
         fl.replace(file_ext, "json")
     } else {
         let mut s = fl.to_owned();
@@ -161,6 +163,7 @@ fn get_context(file: &str) -> Result<serde_json::Value, Error> {
 
     json_patch::merge(&mut final_ctx, &local_ctx);
     // Ok(serde_json::from_str("{}").unwrap())
+    debug!("{}", final_ctx);
     Ok(final_ctx)
 }
 
