@@ -1,8 +1,11 @@
 [package]
 name = "tera_design"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Andras Mocsary <425404+mocsy@users.noreply.github.com>"]
 edition = "2018"
+repository = "https://github.com/mocsy/tera_design"
+license = "MIT OR Apache-2.0"
+description = "tera based web design tool"
 
 [dependencies]
 env_logger = "0.6.2"
