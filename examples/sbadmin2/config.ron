@@ -1,0 +1,10 @@
+(
+    static_dirs: [
+        "css",
+        "js",
+        "vendor",
+        "img",
+        "fonts",
+        "static",
+    ]
+)

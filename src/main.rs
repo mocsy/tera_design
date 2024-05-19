@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 // store tera template in application state
 // #[get("{any:.*}")]
-fn templates(
+async fn templates(
     req: HttpRequest,
     tmpl: web::Data<std::sync::Mutex<tera::Tera>>,
     id: Identity,
@@ -31,13 +31,12 @@ fn templates(
     if let Err(e) = tmpl.full_reload() {
         debug!("Error during template reload: {:?}", e);
     }
-    let s = if let Ok(pth) = web::Path::<String>::extract(&req) {
-        debug!("fn templates: {}", &pth);
+    let s = if let Ok(pth) = web::Path::<String>::extract(&req).into_inner() {
+        debug!("fn templates: path {}", &pth);
         let file = if pth.is_empty() {
             "index.html".to_owned()
         } else if std::path::Path::new(&pth.to_owned())
             .extension()
-            .and_then(std::ffi::OsStr::to_str)
             .is_some()
         {
             pth.to_owned()
@@ -46,6 +45,7 @@ fn templates(
             fl.push_str(".html");
             fl
         };
+
         match get_context(&file, &cfg) {
             Ok(ctx) => tmpl.render(&file, &ctx).map_err(|e| {
                 error::ErrorInternalServerError(format!(
@@ -71,7 +71,8 @@ pub(crate) struct MyAppState {
     secret: String,
 }
 
-fn main() -> std::io::Result<()> {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=info,tera_design=debug");
     env_logger::init();
 
@@ -83,7 +84,6 @@ fn main() -> std::io::Result<()> {
         version, port
     );
     HttpServer::new(move || {
-        // let template_dir = cfg.template_dir.clone();
         let tera = compile_templates!("templates/**/*");
 
         let state = if std::path::Path::new("lockdown.json").exists() {
@@ -123,7 +123,7 @@ fn main() -> std::io::Result<()> {
             .service(web::resource("{any:.*}").route(web::get().to(templates)))
     })
     .bind(format!("127.0.0.1:{}", port))?
-    .run()
+    .run().await
 }
 
 fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, Error> {
@@ -132,7 +132,7 @@ fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, E
     let tdir = std::path::Path::new(&template_dir);
     let file_path = tdir.join(file);
     let fl = file_path.to_str().unwrap().to_owned();
-    debug!("template file: {}", &fl);
+    debug!("Ctx: template file: {}", &fl);
     let ctx_file = if let Some(file_ext) = file_path.extension().and_then(std::ffi::OsStr::to_str) {
         fl.replace(file_ext, "json")
     } else {
@@ -140,6 +140,7 @@ fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, E
         s.push_str(".json");
         s
     };
+
     let mod_file = std::path::Path::new(&fl).parent().unwrap().join("mod.json");
     let mut final_ctx = if std::path::Path::new(&mod_file).exists() {
         let file = std::fs::File::open(mod_file)?;
@@ -162,13 +163,11 @@ fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, E
     };
 
     json_patch::merge(&mut final_ctx, &local_ctx);
-    // Ok(serde_json::from_str("{}").unwrap())
-    debug!("{}", final_ctx);
     Ok(final_ctx)
 }
 
 /// favicon handler
 #[get("/favicon")]
-fn favicon() -> Result<fs::NamedFile, Error> {
+async fn favicon() -> Result<fs::NamedFile, Error> {
     Ok(fs::NamedFile::open("static/favicon.ico")?)
 }
