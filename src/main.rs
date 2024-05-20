@@ -6,10 +6,14 @@ mod config;
 mod lock;
 
 use actix_files as fs;
-use actix_identity::Identity;
-use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_identity::{Identity, IdentityMiddleware};
+use actix_session::storage::CookieSessionStore;
+use actix_session::SessionMiddleware;
 use actix_web::{
-    error, get, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
+    cookie::Key,
+    error, get, middleware,
+    web::{self, Data},
+    App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
 use log::{debug, error, info};
 use serde::Deserialize;
@@ -19,13 +23,15 @@ use serde::Deserialize;
 async fn templates(
     req: HttpRequest,
     tmpl: web::Data<std::sync::Mutex<tera::Tera>>,
-    id: Identity,
+    id: Option<Identity>,
     state: web::Data<std::sync::Mutex<MyAppState>>,
     cfg: web::Data<config::Config>,
 ) -> Result<HttpResponse, Error> {
     let state = state.lock().unwrap();
-    if !state.secret.is_empty() && id.identity().is_none() {
-        return Ok(HttpResponse::Found().header("location", "/unlock").finish());
+    if !state.secret.is_empty() && id.is_none() {
+        return Ok(HttpResponse::Found()
+            .append_header(("location", "/unlock"))
+            .finish());
     }
     let mut tmpl = tmpl.lock().unwrap();
     if let Err(e) = tmpl.full_reload() {
@@ -35,10 +41,7 @@ async fn templates(
         debug!("fn templates: path {}", &pth);
         let file = if pth.is_empty() {
             "index.html".to_owned()
-        } else if std::path::Path::new(&pth.to_owned())
-            .extension()
-            .is_some()
-        {
+        } else if std::path::Path::new(&pth.to_owned()).extension().is_some() {
             pth.to_owned()
         } else {
             let mut fl = pth.to_owned();
@@ -79,6 +82,8 @@ async fn main() -> std::io::Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     let cfg = config::load_config();
     let port = cfg.bind_port;
+    let signing_key = Key::generate();
+
     info!(
         "Tera design {} dev server listening on http://127.0.0.1:{}",
         version, port
@@ -103,14 +108,18 @@ async fn main() -> std::io::Result<()> {
         };
 
         App::new()
-            .data(std::sync::Mutex::new(tera))
-            .data(std::sync::Mutex::new(state))
-            .data(cfg.clone())
-            .wrap(IdentityService::new(
-                CookieIdentityPolicy::new(&[0; 32])
-                    .name("auth")
-                    .secure(false),
-            ))
+            .app_data(Data::new(std::sync::Mutex::new(tera)))
+            .app_data(Data::new(std::sync::Mutex::new(state)))
+            .app_data(Data::new(cfg.clone()))
+            // Install the identity framework first.
+            .wrap(IdentityMiddleware::default())
+            // The identity system is built on top of sessions.
+            // You must install the session middleware to leverage `actix-identity`.
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), signing_key.clone())
+                    .cookie_secure(false)
+                    .build(),
+            )
             .wrap(middleware::Logger::default()) // enable logger
             .service(
                 web::resource("/unlock")
@@ -123,7 +132,8 @@ async fn main() -> std::io::Result<()> {
             .service(web::resource("{any:.*}").route(web::get().to(templates)))
     })
     .bind(format!("127.0.0.1:{}", port))?
-    .run().await
+    .run()
+    .await
 }
 
 fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, Error> {

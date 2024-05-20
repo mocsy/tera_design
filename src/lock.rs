@@ -1,5 +1,5 @@
 use actix_identity::Identity;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse};
 use serde::Deserialize;
 
 use super::MyAppState;
@@ -9,25 +9,30 @@ pub(crate) struct Invite {
     secret: String,
 }
 
-pub(crate) fn login_save(
-    id: Identity,
+pub(crate) async fn login_save(
+    request: HttpRequest,
     invinf: web::Form<Invite>,
     state: web::Data<std::sync::Mutex<MyAppState>>,
 ) -> HttpResponse {
     let state = state.lock().unwrap();
     println!("{:?} {:?}", invinf.secret, state.secret);
     if invinf.secret.eq(&state.secret) {
-        id.remember("visitor".to_owned());
+        // attach a verified user identity to the active session
+        Identity::login(&request.extensions(), "visitor".into()).unwrap();
     }
-    HttpResponse::Found().header("location", "/").finish()
+    HttpResponse::Found()
+        .append_header(("location", "/"))
+        .finish()
 }
 
-pub(crate) fn logout(id: Identity) -> HttpResponse {
-    id.forget();
-    HttpResponse::Found().header("location", "/unlock").finish()
+pub(crate) async fn logout(id: Identity) -> HttpResponse {
+    id.logout();
+    HttpResponse::Found()
+        .append_header(("location", "/unlock"))
+        .finish()
 }
 
-pub(crate) fn login() -> HttpResponse {
+pub(crate) async fn login() -> HttpResponse {
     let html = r#"<!DOCTYPE html>
 <html>
 <head>
