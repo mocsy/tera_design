@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-#[macro_use]
-extern crate tera;
 mod config;
 mod lock;
 
@@ -17,6 +15,7 @@ use actix_web::{
 };
 use log::{debug, error, info};
 use serde::Deserialize;
+use tera::Tera;
 
 // store tera template in application state
 // #[get("{any:.*}")]
@@ -89,7 +88,13 @@ async fn main() -> std::io::Result<()> {
         version, port
     );
     HttpServer::new(move || {
-        let tera = compile_templates!("templates/**/*");
+        let tera = match Tera::new("templates/**/*.html") {
+            Ok(t) => t,
+            Err(e) => {
+                println!("Parsing error(s): {}", e);
+                ::std::process::exit(1);
+            }
+        };
 
         let state = if std::path::Path::new("lockdown.json").exists() {
             if let Ok(file) = std::fs::File::open("lockdown.json") {
@@ -136,7 +141,7 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, Error> {
+fn get_context(file: &str, _cfg: &config::Config) -> Result<tera::Context, Error> {
     // let template_dir = cfg.template_dir.clone();
     let template_dir = "templates/".to_owned();
     let tdir = std::path::Path::new(&template_dir);
@@ -173,7 +178,7 @@ fn get_context(file: &str, _cfg: &config::Config) -> Result<serde_json::Value, E
     };
 
     json_patch::merge(&mut final_ctx, &local_ctx);
-    Ok(final_ctx)
+    Ok(tera::Context::from_value(final_ctx).unwrap())
 }
 
 /// favicon handler

@@ -1,6 +1,6 @@
 [package]
 name = "tera_design"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Andras Mocsary <425404+mocsy@users.noreply.github.com>"]
 edition = "2018"
 repository = "https://github.com/mocsy/tera_design"
@@ -10,7 +10,7 @@ rust-version = "1.72"
 
 [dependencies]
 env_logger = "0.11.3"
-tera = "0.11.20"
+tera = "1.19.1"
 actix-web = "4.6.0"
 log = "0.4.21"
 serde = "1.0.202"
